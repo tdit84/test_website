@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Line Formula Game for Kids</title>
+  <style>
+    body {
+      text-align: center;
+      font-family: Arial, sans-serif;
+      background-color: #eef;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      color: #333;
+    }
+    p {
+      font-size: 1.1em;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      background-color: #fff;
+      margin: 20px auto;
+      display: block;
+    }
+    .slider-container {
+      margin: 10px auto;
+      width: 80%;
+      max-width: 400px;
+    }
+    label {
+      font-size: 1.1em;
+    }
+    #message {
+      margin-top: 15px;
+      font-size: 1.2em;
+      color: green;
+      font-weight: bold;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 1em;
+      margin-top: 15px;
+      cursor: pointer;
+    }
+    #score {
+      font-size: 1.2em;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1>Match the Line Game!</h1>
+  <p>
+    Adjust the blue line (<em>y = mx + b</em>) to match the red dashed target line.
+    Use the sliders below to set the slope (m) and the y-intercept (b).
+  </p>
+  <canvas id="gameCanvas" width="500" height="500"></canvas>
+  <div id="score">Score: </div>
+
+  <div class="slider-container">
+    <label for="slopeSlider">Slope (m): <span id="slopeValue">0</span></label><br>
+    <input type="range" id="slopeSlider" min="-5" max="5" step="0.1" value="0">
+  </div>
+  <div class="slider-container">
+    <label for="interceptSlider">Intercept (b): <span id="interceptValue">0</span></label><br>
+    <input type="range" id="interceptSlider" min="-10" max="10" step="0.1" value="0">
+  </div>
+  <button id="newTargetButton">New Target Line</button>
+  <div id="message"></div>
+
+  <script>
+    // Get references to DOM elements
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const slopeSlider = document.getElementById('slopeSlider');
+    const interceptSlider = document.getElementById('interceptSlider');
+    const slopeValueSpan = document.getElementById('slopeValue');
+    const interceptValueSpan = document.getElementById('interceptValue');
+    const messageDiv = document.getElementById('message');
+    const newTargetButton = document.getElementById('newTargetButton');
+    const scoreDiv = document.getElementById('score');
+
+    // Coordinate system parameters
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
+    const originX = canvasWidth / 2;
+    const originY = canvasHeight / 2;
+    const scale = 20; // pixels per unit
+
+    // Game state variables
+    let targetSlope, targetIntercept;
+    let pointTotal = 0;
+    let gameMatched = false;
+
+    // Generate a random target line (slope between -2 and 2, intercept between -5 and 5)
+    function generateTargetLine() {
+      targetSlope = parseFloat((Math.random() * 4 - 2).toFixed(1));
+      targetIntercept = parseFloat((Math.random() * 10 - 5).toFixed(1));
+    }
+
+    // Clear the canvas
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+    }
+
+    // Draw coordinate grid, axes, and axis numbers
+    function drawAxes() {
+      // Draw grid lines
+      ctx.strokeStyle = "#ddd";
+      ctx.lineWidth = 0.5;
+      for (let x = 0; x <= canvasWidth; x += scale) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvasHeight);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= canvasHeight; y += scale) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvasWidth, y);
+        ctx.stroke();
+      }
+
+      // Draw x and y axes
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 1;
+      // X-axis
+      ctx.beginPath();
+      ctx.moveTo(0, originY);
+      ctx.lineTo(canvasWidth, originY);
+      ctx.stroke();
+      // Y-axis
+      ctx.beginPath();
+      ctx.moveTo(originX, 0);
+      ctx.lineTo(originX, canvasHeight);
+      ctx.stroke();
+
+      // Draw axis numbers
+      ctx.fillStyle = "black";
+      ctx.font = "10px Arial";
+
+      // X-axis numbers
+      let xMin = -Math.floor(originX / scale);
+      let xMax = Math.floor((canvasWidth - originX) / scale);
+      for (let x = xMin; x <= xMax; x++) {
+        let pos = convertToCanvasCoords(x, 0);
+        ctx.fillText(x, pos.x - 3, originY + 12);
+      }
+
+      // Y-axis numbers
+      let yMin = -Math.floor(originY / scale);
+      let yMax = Math.floor(originY / scale);
+      for (let y = yMin; y <= yMax; y++) {
+        if (y === 0) continue; // skip the origin
+        let pos = convertToCanvasCoords(0, y);
+        ctx.fillText(y, originX + 5, pos.y + 3);
+      }
+    }
+
+    // Convert math coordinates (x, y) to canvas coordinates
+    function convertToCanvasCoords(x, y) {
+      return {
+        x: originX + x * scale,
+        y: originY - y * scale
+      };
+    }
+
+    // Draw a line given slope m and intercept b. Options: color, lineWidth, dashed.
+    function drawLine(m, b, options = {}) {
+      const color = options.color || 'blue';
+      const lineWidth = options.lineWidth || 2;
+      const dashed = options.dashed || false;
+      
+      ctx.strokeStyle = color;
+      ctx.lineWidth = lineWidth;
+      if (dashed) {
+        ctx.setLineDash([10, 5]);
+      } else {
+        ctx.setLineDash([]);
+      }
+      
+      ctx.beginPath();
+      // Determine the x-range in math coordinates
+      const xStart = -originX / scale;
+      const xEnd = (canvasWidth - originX) / scale;
+      const yStart = m * xStart + b;
+      const yEnd = m * xEnd + b;
+      const start = convertToCanvasCoords(xStart, yStart);
+      const end = convertToCanvasCoords(xEnd, yEnd);
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
+      ctx.stroke();
+      
+      // Reset dashed style
+      ctx.setLineDash([]);
+    }
+
+    // Update score display
+    function updateScore() {
+      scoreDiv.textContent = "Score: " + "⭐".repeat(pointTotal);
+    }
+
+    // Update the canvas and game status
+    function update() {
+      // Get the player's current slope and intercept
+      const playerSlope = parseFloat(slopeSlider.value);
+      const playerIntercept = parseFloat(interceptSlider.value);
+      slopeValueSpan.textContent = playerSlope;
+      interceptValueSpan.textContent = playerIntercept;
+
+      clearCanvas();
+      drawAxes();
+      // Draw the target line (dashed red)
+      drawLine(targetSlope, targetIntercept, { color: 'red', lineWidth: 2, dashed: true });
+      // Draw the player's line (solid blue)
+      drawLine(playerSlope, playerIntercept, { color: 'blue', lineWidth: 2, dashed: false });
+
+      // Check if the player's line is close enough to the target line
+      const slopeDiff = Math.abs(playerSlope - targetSlope);
+      const interceptDiff = Math.abs(playerIntercept - targetIntercept);
+      if (!gameMatched && slopeDiff < 0.2 && interceptDiff < 0.5) {
+        gameMatched = true;
+        messageDiv.textContent = "Great job! You matched the target line!";
+        pointTotal++;
+        updateScore();
+        // Restart game with a new target after 1 second
+        setTimeout(function(){
+          generateTargetLine();
+          gameMatched = false;
+          update();
+        }, 1000);
+      } else if (!gameMatched) {
+        messageDiv.textContent = "Keep trying to match the target line!";
+      }
+    }
+
+    // Set up event listeners
+    slopeSlider.addEventListener('input', update);
+    interceptSlider.addEventListener('input', update);
+    newTargetButton.addEventListener('click', () => {
+      generateTargetLine();
+      gameMatched = false;
+      update();
+    });
+
+    // Initialize the game
+    generateTargetLine();
+    updateScore();
+    update();
+  </script>
+</body>
+</html>
